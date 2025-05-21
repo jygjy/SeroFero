@@ -40,13 +40,14 @@
 
 import Navbar from "@/components/Navbar";
 import "../styles/globals.css";
+import { ToastProvider } from "@/hooks/use-toast";
 
 function MyApp({ Component, pageProps }) {
   return (
-    <div>
-      <Navbar />
+    <ToastProvider>
+      {/* <Navbar /> */}
       <Component {...pageProps} />
-    </div>
+    </ToastProvider>
   );
 }
 

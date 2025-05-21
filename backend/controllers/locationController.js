@@ -1,6 +1,8 @@
 const Location = require("../models/Location");
+const User = require("../models/User");
+const { createNotification } = require("./notificationController");
 
-// ✅ Add a new location
+
 exports.addLocation = async (req, res) => {
   try {
     const { name, description, category, latitude, longitude } = req.body;
@@ -25,16 +27,28 @@ exports.addLocation = async (req, res) => {
     });
 
     await location.save();
+
+    // Notify admin about new location
+    const admins = await User.find({ role: "admin" });
+    for (const admin of admins) {
+      await createNotification(
+        admin._id,
+        "location_added",
+        location._id,
+        `New location "${location.name}" has been submitted for approval`
+      );
+    }
+
     res.status(201).json({ message: "Location submitted for approval", location });
   } catch (error) {
     res.status(500).json({ message: "Server Error", error: error.message });
   }
 };
 
-// ✅ Get all approved locations (for Explore Page)
+// ✅ Get all approved locations (for Explore Page and Community Page)
 exports.getApprovedLocations = async (req, res) => {
   try {
-    const locations = await Location.find({ approved: true });
+    const locations = await Location.find({ approved: true }).populate('reviews'); // Populate reviews
     res.json(locations);
   } catch (error) {
     res.status(500).json({ message: "Server Error", error: error.message });
@@ -56,7 +70,7 @@ exports.getAllLocations = async (req, res) => {
  */
 exports.getLocationById = async (req, res) => {
   try {
-    const location = await Location.findById(req.params.id).populate("reviews.user", "name");
+    const location = await Location.findById(req.params.id).populate("reviews.user", "name profileImage");
     if (!location) return res.status(404).json({ message: "Location not found" });
 
     res.json(location);
@@ -74,11 +88,55 @@ exports.approveLocation = async (req, res) => {
 
     location.approved = approved;
     await location.save();
+
+    // Notify user about location approval/rejection
+    await createNotification(
+      location.addedBy,
+      approved ? "location_approved" : "location_rejected",
+      location._id,
+      `Your location "${location.name}" has been ${approved ? "approved" : "rejected"}`
+    );
+
     res.json({ message: `Location ${approved ? "approved" : "rejected"}`, location });
   } catch (error) {
     res.status(500).json({ message: "Server Error", error: error.message });
   }
 };
+
+/**
+ * ✅ Check if location is liked by the user
+ */
+exports.checkLikeStatus = async (req, res) => {
+  try {
+    const location = await Location.findById(req.params.id);
+    if (!location) return res.status(404).json({ message: "Location not found" });
+
+    const userId = req.user.id;
+    const isLiked = location.likes.includes(userId);
+
+    res.json({ isLiked });
+  } catch (error) {
+    res.status(500).json({ message: "Server Error", error: error.message });
+  }
+};
+
+/**
+ * ✅ Check if location is in user's wishlist
+ */
+exports.checkWishlistStatus = async (req, res) => {
+  try {
+    const location = await Location.findById(req.params.id);
+    if (!location) return res.status(404).json({ message: "Location not found" });
+
+    const userId = req.user.id;
+    const isBookmarked = location.wishlist.includes(userId);
+
+    res.json({ isBookmarked });
+  } catch (error) {
+    res.status(500).json({ message: "Server Error", error: error.message });
+  }
+};
+
 /**
  * ✅ Like/Unlike a Location
  */
@@ -146,3 +204,62 @@ exports.toggleWishlist = async (req, res) => {
     res.status(500).json({ message: "Server Error", error: error.message });
   }
 };
+
+/**
+ * Like or Unlike a Review
+ */
+exports.likeReview = async (req, res) => {
+  try {
+    const { locationId, reviewId } = req.params;
+    const userId = req.user.id;
+    const location = await Location.findById(locationId);
+    if (!location) return res.status(404).json({ message: "Location not found" });
+
+    const review = location.reviews.id(reviewId);
+    if (!review) return res.status(404).json({ message: "Review not found" });
+
+    const alreadyLiked = review.likes.includes(userId);
+    if (alreadyLiked) {
+      review.likes.pull(userId);
+    } else {
+      review.likes.push(userId);
+    }
+
+    await location.save();
+    res.json({ message: alreadyLiked ? "Review unliked" : "Review liked", likes: review.likes.length });
+  } catch (error) {
+    res.status(500).json({ message: "Server Error", error: error.message });
+  }
+};
+
+// Add a Reply to a Review
+exports.replyToReview = async (req, res) => {
+  try {
+    const { locationId, reviewId } = req.params;
+    const { comment } = req.body;
+    const userId = req.user.id;
+    const location = await Location.findById(locationId);
+    if (!location) return res.status(404).json({ message: "Location not found" });
+
+    const review = location.reviews.id(reviewId);
+    if (!review) return res.status(404).json({ message: "Review not found" });
+
+    review.replies.push({ user: userId, comment });
+    await location.save();
+    res.json({ message: "Reply added", replies: review.replies });
+  } catch (error) {
+    res.status(500).json({ message: "Server Error", error: error.message });
+  }
+};
+
+// Delete a location (Admin only)
+exports.deleteLocation = async (req, res) => {
+  try {
+    const location = await Location.findByIdAndDelete(req.params.id);
+    if (!location) return res.status(404).json({ message: "Location not found" });
+    res.json({ message: "Location deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Server Error", error: error.message });
+  }
+};
+

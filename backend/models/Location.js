@@ -41,14 +41,22 @@
 
 const mongoose = require("mongoose");
 
-// Review Schema (For comments & ratings)
-const ReviewSchema = new mongoose.Schema({
-  user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true }, // User who wrote the review
-  rating: { type: Number, required: true, min: 1, max: 5 }, // Rating (1-5)
-  comment: { type: String, required: true }, // User's review text
-  createdAt: { type: Date, default: Date.now }, // Timestamp
+// Reply Schema
+const ReplySchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  comment: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now }
 });
 
+// Review Schema (add likes and replies)
+const ReviewSchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  rating: { type: Number, required: true, min: 1, max: 5 },
+  comment: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now },
+  likes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], // <-- NEW
+  replies: [ReplySchema] // <-- NEW
+});
 // Location Schema
 const LocationSchema = new mongoose.Schema({
   name: { type: String, required: true }, // Location name
